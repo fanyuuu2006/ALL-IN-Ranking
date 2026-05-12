@@ -28,18 +28,30 @@ const HAND_RANKS = [
  */
 
 /**
- * @typedef {Object} LogEntry
- * @property {string} time - 紀錄時間字串
- * @property {string} message - 紀錄內容訊息
+ * 單局對局紀錄
+ * @typedef {Object} MatchRecord
+ * @property {string} id - 對局的唯一識別碼
+ * @property {string} timestamp - 對局紀錄的時間字串
+ * @property {MatchPlayer[]} players - 參與此局的玩家表現陣列
+ */
+
+/**
+ * 玩家在單局中的表現
+ * @typedef {Object} MatchPlayer
+ * @property {string} playerId - 玩家 ID
+ * @property {number} scoreDelta - 此局獲得的分數增減量
+ * @property {number[]} hands - 此局打出的所有牌型 (對應 HAND_RANKS 的 index 陣列)
+ * @property {number} allInCount - 此局 All-In 的次數
+ * @property {number} maxPredictionSuccess - 此局的最大預測成功數
  */
 
 /**
  * 應用程式的主要狀態
- * @type {{ players: Player[], logs: LogEntry[], searchQuery: string }}
+ * @type {{ players: Player[], matches: MatchRecord[], searchQuery: string }}
  */
 const AppState = {
   players: [],
-  logs: [],
+  matches: [],
   searchQuery: "",
 };
 
@@ -52,21 +64,21 @@ const StorageModule = {
   /** 將玩家陣列與歷史紀錄儲存至 LocalStorage */
   save() {
     localStorage.setItem("poker_players", JSON.stringify(AppState.players));
-    localStorage.setItem("poker_logs", JSON.stringify(AppState.logs));
+    localStorage.setItem("poker_matches", JSON.stringify(AppState.matches));
   },
   /** 從 LocalStorage 載入資料至 AppState */
   load() {
     const savedPlayers = localStorage.getItem("poker_players");
-    const savedLogs = localStorage.getItem("poker_logs");
+    const savedMatches = localStorage.getItem("poker_matches");
     if (savedPlayers) AppState.players = JSON.parse(savedPlayers);
-    if (savedLogs) AppState.logs = JSON.parse(savedLogs);
+    if (savedMatches) AppState.matches = JSON.parse(savedMatches);
   },
   /** 清空 LocalStorage 以及 AppState 資料 */
   clear() {
     localStorage.removeItem("poker_players");
-    localStorage.removeItem("poker_logs");
+    localStorage.removeItem("poker_matches");
     AppState.players = [];
-    AppState.logs = [];
+    AppState.matches = [];
   },
 };
 
@@ -74,31 +86,33 @@ const StorageModule = {
  * 負責歷史紀錄管理的模組
  * @namespace
  */
-// --- Logs 模組 ---
-const LogsModule = {
-  /**
-   * 新增一筆變更紀錄
-   * @param {string} playerName - 玩家名稱
-   * @param {string} field - 修改的欄位標籤
-   * @param {number|string} oldValue - 變更前數值
-   * @param {number|string} newValue - 變更后數值大
-   */
-  add(playerName, field, oldValue, newValue) {
-    if (oldValue === newValue) return;
-
-    const timeStr = new Date()
-      .toLocaleString("zh-TW", { hour12: false })
-      .replace(/\//g, "-");
-    const isHand = field.includes("牌型");
-    const format = (v) => (isHand ? HAND_RANKS[v] || "None" : v);
-
-    AppState.logs.unshift({
-      time: timeStr,
-      message: `${playerName} 的 ${field}: ${format(oldValue)} → ${format(newValue)}`,
+// --- Matches 模組 ---
+const MatchesModule = {
+  addMatch(matchData) {
+    AppState.matches.unshift({
+      id: crypto?.randomUUID?.() || Math.random().toString(36).slice(2),
+      timestamp: new Date()
+        .toLocaleString("zh-TW", { hour12: false })
+        .replace(/\//g, "-"),
+      players: matchData.players || [],
     });
-
+    PlayersModule.recalculateAllStats();
     StorageModule.save();
-    RenderModule.renderLogs();
+    RenderModule.renderAll();
+  },
+  updateMatch(matchId, matchData) {
+    const match = AppState.matches.find((m) => m.id === matchId);
+    if (!match) return;
+    match.players = matchData.players || [];
+    PlayersModule.recalculateAllStats();
+    StorageModule.save();
+    RenderModule.renderAll();
+  },
+  deleteMatch(matchId) {
+    AppState.matches = AppState.matches.filter((m) => m.id !== matchId);
+    PlayersModule.recalculateAllStats();
+    StorageModule.save();
+    RenderModule.renderAll();
   },
 };
 
@@ -142,37 +156,48 @@ const PlayersModule = {
     StorageModule.save();
     RenderModule.renderAll();
   },
-  /**
-   * 更新指定玩家的屬性
-   * @param {string} id - 玩家識別碼
-   * @param {Partial<Player>} updates - 要更新的玩家資料屬性
-   */
-  updatePlayer(id, updates) {
-    const player = AppState.players.find((p) => p.id === id);
-    if (!player) return;
+  /** 根據所有對局紀錄重新計算全體玩家的數據 */
+  recalculateAllStats() {
+    // 初始化所有玩家的分數與數據
+    AppState.players.forEach((p) => {
+      p.score = 0;
+      p.maxPredictionSuccess = 0;
+      p.topHand1 = 0;
+      p.topHand2 = 0;
+      p.topHand3 = 0;
+      p.allInCount = 0;
+      p._allHands = []; // 暫存該玩家所有的手牌
+    });
 
-    const fieldsToTrack = {
-      score: "分數",
-      maxPredictionSuccess: "最高預測",
-      topHand1: "第一牌型",
-      topHand2: "第二牌型",
-      topHand3: "第三牌型",
-      allInCount: "All-in 次數",
-    };
+    // 遍歷所有對局累加數據
+    AppState.matches.forEach((match) => {
+      (match.players || []).forEach((mp) => {
+        const player = AppState.players.find((p) => p.id === mp.playerId);
+        if (!player) return;
 
-    let isUpdated = false;
-    for (const [key, label] of Object.entries(fieldsToTrack)) {
-      if (updates[key] !== undefined && updates[key] !== player[key]) {
-        LogsModule.add(player.name, label, player[key], updates[key]);
-        player[key] = updates[key];
-        isUpdated = true;
+        player.score += mp.scoreDelta || 0;
+        player.maxPredictionSuccess = Math.max(
+          player.maxPredictionSuccess,
+          mp.maxPredictionSuccess || 0
+        );
+        player.allInCount += mp.allInCount || 0;
+        if (mp.hands && mp.hands.length) {
+          player._allHands.push(...mp.hands);
+        }
+      });
+    });
+
+    // 計算前三大牌型
+    AppState.players.forEach((p) => {
+      if (p._allHands && p._allHands.length > 0) {
+        // 從大到小排序
+        p._allHands.sort((a, b) => b - a);
+        p.topHand1 = p._allHands[0] || 0;
+        p.topHand2 = p._allHands[1] || 0;
+        p.topHand3 = p._allHands[2] || 0;
       }
-    }
-
-    if (isUpdated) {
-      StorageModule.save();
-      RenderModule.renderAll();
-    }
+      delete p._allHands; // 清理暫存屬性
+    });
   },
 };
 
@@ -222,27 +247,14 @@ const RankingModule = {
 const RenderModule = {
   /** 初始化整個應用程式 */
   init() {
-    this.renderSelectOptions();
     this.bindEvents();
     StorageModule.load();
     this.renderAll();
   },
-  /** 動態生成 HTML 靜態選單 */
-  renderSelectOptions() {
-    const selects = ["editTopHand1", "editTopHand2", "editTopHand3"];
-    // 預先產生 HTML 字串，減少 DOM 操作次數
-    const optionsHtml = HAND_RANKS.map(
-      (hand, index) => `<option value="${index}">${hand}</option>`,
-    ).join("");
-
-    selects.forEach((id) => {
-      document.getElementById(id).innerHTML = optionsHtml;
-    });
-  },
   /** 呼叫所有渲染函式以全面更新畫面 */
   renderAll() {
     this.renderRanking();
-    this.renderLogs();
+    this.renderMatches();
   },
   /** 計算並渲染排行榜區塊 */
   renderRanking() {
@@ -268,54 +280,159 @@ const RenderModule = {
                     <div class="stat-detail">報到順序 #${p.checkInOrder}</div>
                 </div>
                 <div class="col-actions">
-                    <button class="btn btn-sm btn-secondary" onclick="RenderModule.openEditModal('${p.id}')">編輯</button>
+                    <!-- 列出對局，不再直接編輯分數 -->
                 </div>
             </div>
         `,
         )
         .join("") || '<div class="empty-state">尚無玩家資料</div>';
   },
-  /** 渲染操作與歷史變更記錄 */
-  renderLogs() {
-    const container = document.getElementById("logsContainer");
+  /** 渲染對局紀錄 */
+  renderMatches() {
+    const container = document.getElementById("matchesContainer");
     container.innerHTML =
-      AppState.logs
-        .map(
-          (log) => `
-            <div class="log-item">
-                <div class="log-time">[${log.time}]</div>
-                <div class="log-msg">${this.escapeHtml(log.message)}</div>
+      AppState.matches
+        .map((match, index) => {
+          const playersHtml = (match.players || []).map(mp => {
+            const player = AppState.players.find(p => p.id === mp.playerId);
+            const name = player ? this.escapeHtml(player.name) : "未知玩家";
+            const scoreSign = mp.scoreDelta >= 0 ? "+" : "";
+            return `<span>${name} (${scoreSign}${mp.scoreDelta})</span>`;
+          }).join(", ");
+
+          return `
+            <div class="log-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; width: 100%;">
+                    <div class="log-time">[${match.timestamp}] 局數 #${AppState.matches.length - index}</div>
+                    <button class="btn btn-sm btn-secondary" onclick="RenderModule.openMatchModal('${match.id}')">編輯</button>
+                </div>
+                <div class="log-msg" style="font-size: 0.9em; color: #666;">
+                    參與者: ${playersHtml || "無"}
+                </div>
             </div>
-        `,
-        )
-        .join("") || '<div class="empty-state">尚無紀錄</div>';
+        `;
+        })
+        .join("") || '<div class="empty-state">尚無對局紀錄</div>';
   },
-  /**
-   * 開啟玩家資料的編輯視窗並填入初始值
-   * @param {string} id - 目標玩家 ID
-   */
-  openEditModal(id) {
-    const player = AppState.players.find((p) => p.id === id);
+  /** 開啟對局編輯視窗 */
+  openMatchModal(matchId = null) {
+    const form = document.getElementById("matchForm");
+    form.reset();
+    document.getElementById("matchPlayersList").innerHTML = "";
+    document.getElementById("editMatchId").value = matchId || "";
+    document.getElementById("matchModalTitle").textContent = matchId ? "編輯對局" : "新增對局";
+
+    // 渲染下拉選單
+    const selector = document.getElementById("playerSelector");
+    selector.innerHTML = '<option value="">-- 加入玩家至本局 --</option>' + 
+      AppState.players.map(p => `<option value="${p.id}">${this.escapeHtml(p.name)}</option>`).join("");
+
+    if (matchId) {
+      const match = AppState.matches.find(m => m.id === matchId);
+      if (match && match.players) {
+        match.players.forEach(mp => this.addPlayerToMatchForm(mp));
+      }
+    }
+
+    document.getElementById("matchModal").classList.add("active");
+  },
+  /** 將玩家欄位加入到對局表單 */
+  addPlayerToMatchForm(matchPlayer = null) {
+    const selector = document.getElementById("playerSelector");
+    let playerId = matchPlayer ? matchPlayer.playerId : selector.value;
+    
+    if (!playerId) return;
+
+    const player = AppState.players.find(p => p.id === playerId);
     if (!player) return;
 
-    const setVal = (elmId, value) => {
-      document.getElementById(elmId).value = value;
-    };
-    document.getElementById("modalTitle").textContent = `編輯: ${player.name}`;
+    // 檢查是否已加入
+    if (document.querySelector(`.match-player-row[data-player-id="${playerId}"]`)) {
+      alert("該玩家已在清單中！");
+      return;
+    }
 
-    setVal("editPlayerId", player.id);
-    setVal("editScore", player.score);
-    setVal("editMaxPrediction", player.maxPredictionSuccess);
-    setVal("editTopHand1", player.topHand1);
-    setVal("editTopHand2", player.topHand2);
-    setVal("editTopHand3", player.topHand3);
-    setVal("editAllIn", player.allInCount);
+    const handsOptions = HAND_RANKS.map((hand, index) => `<option value="${index}">${hand}</option>`).join("");
+    
+    const row = document.createElement("div");
+    row.className = "match-player-row";
+    row.dataset.playerId = playerId;
+    
+    const handsArr = matchPlayer && matchPlayer.hands ? matchPlayer.hands : [];
+    
+    row.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
+        <div style="font-weight: 700; font-size: 16px; color: var(--color-primary);">${this.escapeHtml(player.name)}</div>
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.match-player-row').remove()">移除</button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;">
+        <div>
+          <label class="mp-label">得分增減</label>
+          <input type="number" class="mp-score input" value="${matchPlayer ? matchPlayer.scoreDelta : 0}" required>
+        </div>
+        <div>
+          <label class="mp-label">本局牌型 (可多選)</label>
+          <select class="mp-hands input" multiple style="height: 80px; padding: 4px;">
+            ${handsOptions}
+          </select>
+        </div>
+        <div>
+          <label class="mp-label">All-In 次數</label>
+          <input type="number" class="mp-allin input" value="${matchPlayer ? matchPlayer.allInCount : 0}" min="0" required>
+        </div>
+        <div>
+          <label class="mp-label">最大預測成功</label>
+          <input type="number" class="mp-prediction input" value="${matchPlayer ? matchPlayer.maxPredictionSuccess : 0}" min="0" required>
+        </div>
+      </div>
+    `;
 
-    document.getElementById("editModal").classList.add("active");
+    document.getElementById("matchPlayersList").appendChild(row);
+
+    // 預先選中牌型
+    if (handsArr.length > 0) {
+      const select = row.querySelector('.mp-hands');
+      Array.from(select.options).forEach(opt => {
+        if (handsArr.includes(parseInt(opt.value))) {
+          opt.selected = true;
+        }
+      });
+    }
+
+    selector.value = "";
   },
-  /** 關閉編輯視窗 */
-  closeModal() {
-    document.getElementById("editModal").classList.remove("active");
+  /** 儲存對局表單資料 */
+  saveMatchForm() {
+    try {
+      const matchId = document.getElementById("editMatchId").value;
+      const playerRows = document.querySelectorAll(".match-player-row");
+      
+      const playersData = Array.from(playerRows).map(row => {
+        const handsSelect = row.querySelector('.mp-hands');
+        const selectedHands = Array.from(handsSelect.selectedOptions).map(opt => parseInt(opt.value));
+        
+        return {
+          playerId: row.dataset.playerId,
+          scoreDelta: parseInt(row.querySelector('.mp-score').value) || 0,
+          hands: selectedHands,
+          allInCount: Math.max(0, parseInt(row.querySelector('.mp-allin').value) || 0),
+          maxPredictionSuccess: Math.max(0, parseInt(row.querySelector('.mp-prediction').value) || 0)
+        };
+      });
+
+      if (matchId) {
+        MatchesModule.updateMatch(matchId, { players: playersData });
+      } else {
+        MatchesModule.addMatch({ players: playersData });
+      }
+    } catch (err) {
+      console.error(err);
+      alert("儲存對局發生錯誤：" + err.message);
+    }
+  },
+  /** 關閉對局視窗 */
+  closeMatchModal() {
+    document.getElementById("matchModal").classList.remove("active");
   },
   /**
    * 字串消毒，防止 XSS 攻擊
@@ -346,28 +463,26 @@ const RenderModule = {
       this.renderRanking();
     });
 
+    // 新增對局按鈕
+    document.getElementById("addMatchBtn")?.addEventListener("click", () => {
+      this.openMatchModal();
+    });
+
     // Modal 操作
     document
-      .getElementById("closeModalBtn")
-      .addEventListener("click", () => this.closeModal());
+      .getElementById("closeMatchModalBtn")
+      .addEventListener("click", () => this.closeMatchModal());
     document
-      .getElementById("cancelEditBtn")
-      .addEventListener("click", () => this.closeModal());
+      .getElementById("cancelMatchEditBtn")
+      .addEventListener("click", () => this.closeMatchModal());
 
-    document.getElementById("saveEditBtn").addEventListener("click", () => {
-      const id = document.getElementById("editPlayerId").value;
-      const getVal = (elmId) =>
-        parseInt(document.getElementById(elmId).value) || 0;
+    document.getElementById("addPlayerToMatchBtn").addEventListener("click", () => {
+      this.addPlayerToMatchForm();
+    });
 
-      PlayersModule.updatePlayer(id, {
-        score: getVal("editScore"),
-        maxPredictionSuccess: getVal("editMaxPrediction"),
-        topHand1: getVal("editTopHand1"),
-        topHand2: getVal("editTopHand2"),
-        topHand3: getVal("editTopHand3"),
-        allInCount: getVal("editAllIn"),
-      });
-      this.closeModal();
+    document.getElementById("saveMatchBtn").addEventListener("click", () => {
+      this.saveMatchForm();
+      this.closeMatchModal();
     });
 
     // 資料操作
@@ -400,11 +515,18 @@ const RenderModule = {
       reader.onload = (e) => {
         try {
           const data = JSON.parse(e.target.result);
-          if (data.players && data.logs) {
+          if (data.players && data.matches) {
             AppState.players = data.players;
-            AppState.logs = data.logs;
+            AppState.matches = data.matches;
             StorageModule.save();
             this.renderAll();
+          } else if (data.players && data.logs) {
+             // 兼容舊資料架構
+            AppState.players = data.players;
+            AppState.matches = [];
+            StorageModule.save();
+            this.renderAll();
+            alert("匯入成功，但舊版操作紀錄已失效，已清空對局記錄。");
           } else {
             alert("無效的檔案格式");
           }

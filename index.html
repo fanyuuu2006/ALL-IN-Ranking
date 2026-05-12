@@ -57,8 +57,20 @@
           </div>
 
           <div class="panel-section logs-section">
-            <h2>操作紀錄</h2>
-            <div id="logsContainer" class="logs-list"></div>
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 1rem;
+              "
+            >
+              <h2 style="margin: 0">對局記錄</h2>
+              <button id="addMatchBtn" class="btn btn-primary">
+                ➕ 新增對局
+              </button>
+            </div>
+            <div id="matchesContainer" class="logs-list"></div>
           </div>
         </section>
 
@@ -77,48 +89,51 @@
       </main>
     </div>
 
-    <!-- 編輯 Modal -->
-    <div id="editModal" class="modal">
-      <div class="modal-content">
+    <!-- 對局編輯 Modal -->
+    <div id="matchModal" class="modal">
+      <div class="modal-content" style="max-width: 800px; display: flex; flex-direction: column; max-height: 90vh;">
         <div class="modal-header">
-          <h3 id="modalTitle">編輯玩家</h3>
-          <button class="close-btn" id="closeModalBtn">&times;</button>
+          <h3 id="matchModalTitle" style="color: var(--color-primary);">新增對局</h3>
+          <button class="close-btn" id="closeMatchModalBtn">&times;</button>
         </div>
-        <div class="modal-body">
-          <form id="editForm">
-            <input type="hidden" id="editPlayerId" />
-            <div class="form-group">
-              <label>分數</label>
-              <input type="number" id="editScore" required />
+        <div class="modal-body" style="flex: 1; overflow-y: auto; padding: 24px;">
+          <form id="matchForm">
+            <input type="hidden" id="editMatchId" />
+            <div
+              class="form-group"
+              style="
+                display: flex;
+                gap: 12px;
+                align-items: center;
+                margin-bottom: 24px;
+              "
+            >
+              <select id="playerSelector" style="flex: 1; padding: 10px; font-size: 15px;" class="input">
+                <option value="">-- 加入玩家至本局 --</option>
+              </select>
+              <button
+                type="button"
+                id="addPlayerToMatchBtn"
+                class="btn btn-secondary"
+              >
+                ➕ 加入
+              </button>
             </div>
-            <div class="form-group">
-              <label>最大牌型成功預測次數</label>
-              <input type="number" id="editMaxPrediction" required />
-            </div>
-            <div class="form-group">
-              <label>第一大牌型</label>
-              <select id="editTopHand1"></select>
-            </div>
-            <div class="form-group">
-              <label>第二大牌型</label>
-              <select id="editTopHand2"></select>
-            </div>
-            <div class="form-group">
-              <label>第三大牌型</label>
-              <select id="editTopHand3"></select>
-            </div>
-            <div class="form-group">
-              <label>All in 次數</label>
-              <input type="number" id="editAllIn" required />
+            <div id="matchPlayersList" style="display: flex; flex-direction: column; gap: 16px;">
+              <!-- 動態產生對局玩家表單 -->
             </div>
           </form>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" id="cancelEditBtn">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            id="cancelMatchEditBtn"
+          >
             取消
           </button>
-          <button type="button" class="btn btn-primary" id="saveEditBtn">
-            儲存
+          <button type="button" class="btn btn-primary" id="saveMatchBtn">
+            儲存對局
           </button>
         </div>
       </div>
