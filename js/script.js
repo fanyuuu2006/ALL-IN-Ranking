@@ -8,8 +8,8 @@ const HAND_RANKS = [
   "兩對",
   "三條",
   "葫蘆",
-  "順子",
   "同花",
+  "順子",
   "鐵支",
   "同花順",
 ];
@@ -86,19 +86,15 @@ const LogsModule = {
   add(playerName, field, oldValue, newValue) {
     if (oldValue === newValue) return;
 
-    // 優化: 使用 toLocaleString 簡化時間格式處理
     const timeStr = new Date()
       .toLocaleString("zh-TW", { hour12: false })
       .replace(/\//g, "-");
-
-    // 判斷是否為牌型欄位，以對應正確顯示文字
-    const isHandField = field.includes("topHand") || field.includes("牌型");
-    const oldDisplay = isHandField ? HAND_RANKS[oldValue] || "None" : oldValue;
-    const newDisplay = isHandField ? HAND_RANKS[newValue] || "None" : newValue;
+    const isHand = field.includes("牌型");
+    const format = (v) => (isHand ? HAND_RANKS[v] || "None" : v);
 
     AppState.logs.unshift({
       time: timeStr,
-      message: `${playerName} 的 ${field}: ${oldDisplay} → ${newDisplay}`,
+      message: `${playerName} 的 ${field}: ${format(oldValue)} → ${format(newValue)}`,
     });
 
     StorageModule.save();
@@ -120,34 +116,29 @@ const PlayersModule = {
     const names = text
       .split("\n")
       .map((n) => n.trim())
-      .filter(Boolean); // 優化: 直接利用 Boolean 過濾空字串
-
-    if (names.length === 0) return;
+      .filter(Boolean);
+    if (!names.length) return;
 
     const currentCount = AppState.players.length;
-    // 優化: 使用 Set 來追蹤現有名稱，將重複檢查的時間複雜度降為 O(1)
     const existingNames = new Set(AppState.players.map((p) => p.name));
 
     names.forEach((name, index) => {
-      if (!existingNames.has(name)) {
-        AppState.players.push({
-          id:
-            self.crypto && crypto.randomUUID
-              ? crypto.randomUUID()
-              : Date.now().toString(36) +
-                Math.random().toString(36).substring(2),
-          name: name,
-          score: 0,
-          maxPredictionSuccess: 0,
-          topHand1: 0,
-          topHand2: 0,
-          topHand3: 0,
-          allInCount: 0,
-          checkInOrder: currentCount + index + 1,
-        });
-        existingNames.add(name);
-      }
+      if (existingNames.has(name)) return;
+
+      AppState.players.push({
+        id: crypto?.randomUUID?.() || Math.random().toString(36).slice(2),
+        name,
+        score: 0,
+        maxPredictionSuccess: 0,
+        topHand1: 0,
+        topHand2: 0,
+        topHand3: 0,
+        allInCount: 0,
+        checkInOrder: currentCount + index + 1,
+      });
+      existingNames.add(name);
     });
+
     StorageModule.save();
     RenderModule.renderAll();
   },
@@ -160,15 +151,13 @@ const PlayersModule = {
     const player = AppState.players.find((p) => p.id === id);
     if (!player) return;
 
-    // 將資料庫鍵名對應到要顯示的欄位標籤，讓紀錄更直覺
     const fieldsToTrack = {
       score: "分數",
-      maxPredictionSuccess: "最高預測成功",
+      maxPredictionSuccess: "最高預測",
       topHand1: "第一牌型",
       topHand2: "第二牌型",
       topHand3: "第三牌型",
       allInCount: "All-in 次數",
-      checkInOrder: "報到順序",
     };
 
     let isUpdated = false;
@@ -309,15 +298,18 @@ const RenderModule = {
     const player = AppState.players.find((p) => p.id === id);
     if (!player) return;
 
+    const setVal = (elmId, value) => {
+      document.getElementById(elmId).value = value;
+    };
     document.getElementById("modalTitle").textContent = `編輯: ${player.name}`;
-    document.getElementById("editPlayerId").value = player.id;
-    document.getElementById("editScore").value = player.score;
-    document.getElementById("editMaxPrediction").value =
-      player.maxPredictionSuccess;
-    document.getElementById("editTopHand1").value = player.topHand1;
-    document.getElementById("editTopHand2").value = player.topHand2;
-    document.getElementById("editTopHand3").value = player.topHand3;
-    document.getElementById("editAllIn").value = player.allInCount;
+
+    setVal("editPlayerId", player.id);
+    setVal("editScore", player.score);
+    setVal("editMaxPrediction", player.maxPredictionSuccess);
+    setVal("editTopHand1", player.topHand1);
+    setVal("editTopHand2", player.topHand2);
+    setVal("editTopHand3", player.topHand3);
+    setVal("editAllIn", player.allInCount);
 
     document.getElementById("editModal").classList.add("active");
   },
@@ -364,14 +356,16 @@ const RenderModule = {
 
     document.getElementById("saveEditBtn").addEventListener("click", () => {
       const id = document.getElementById("editPlayerId").value;
+      const getVal = (elmId) =>
+        parseInt(document.getElementById(elmId).value) || 0;
+
       PlayersModule.updatePlayer(id, {
-        score: parseInt(document.getElementById("editScore").value) || 0,
-        maxPredictionSuccess:
-          parseInt(document.getElementById("editMaxPrediction").value) || 0,
-        topHand1: parseInt(document.getElementById("editTopHand1").value) || 0,
-        topHand2: parseInt(document.getElementById("editTopHand2").value) || 0,
-        topHand3: parseInt(document.getElementById("editTopHand3").value) || 0,
-        allInCount: parseInt(document.getElementById("editAllIn").value) || 0,
+        score: getVal("editScore"),
+        maxPredictionSuccess: getVal("editMaxPrediction"),
+        topHand1: getVal("editTopHand1"),
+        topHand2: getVal("editTopHand2"),
+        topHand3: getVal("editTopHand3"),
+        allInCount: getVal("editAllIn"),
       });
       this.closeModal();
     });
