@@ -85,14 +85,16 @@ const LogsModule = {
    */
   add(playerName, field, oldValue, newValue) {
     if (oldValue === newValue) return;
-    
+
     // 優化: 使用 toLocaleString 簡化時間格式處理
-    const timeStr = new Date().toLocaleString("zh-TW", { hour12: false }).replace(/\//g, '-');
+    const timeStr = new Date()
+      .toLocaleString("zh-TW", { hour12: false })
+      .replace(/\//g, "-");
 
     // 判斷是否為牌型欄位，以對應正確顯示文字
     const isHandField = field.includes("topHand") || field.includes("牌型");
-    const oldDisplay = isHandField ? (HAND_RANKS[oldValue] || "None") : oldValue;
-    const newDisplay = isHandField ? (HAND_RANKS[newValue] || "None") : newValue;
+    const oldDisplay = isHandField ? HAND_RANKS[oldValue] || "None" : oldValue;
+    const newDisplay = isHandField ? HAND_RANKS[newValue] || "None" : newValue;
 
     AppState.logs.unshift({
       time: timeStr,
@@ -129,7 +131,11 @@ const PlayersModule = {
     names.forEach((name, index) => {
       if (!existingNames.has(name)) {
         AppState.players.push({
-          id: self.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).substring(2),
+          id:
+            self.crypto && crypto.randomUUID
+              ? crypto.randomUUID()
+              : Date.now().toString(36) +
+                Math.random().toString(36).substring(2),
           name: name,
           score: 0,
           maxPredictionSuccess: 0,
@@ -156,12 +162,13 @@ const PlayersModule = {
 
     // 將資料庫鍵名對應到要顯示的欄位標籤，讓紀錄更直覺
     const fieldsToTrack = {
-      score: "積分",
+      score: "分數",
       maxPredictionSuccess: "最高預測成功",
       topHand1: "第一牌型",
       topHand2: "第二牌型",
       topHand3: "第三牌型",
       allInCount: "All-in 次數",
+      checkInOrder: "報到順序",
     };
 
     let isUpdated = false;
@@ -191,24 +198,30 @@ const RankingModule = {
    * @returns {Player[]} 排序後的玩家資料
    */
   getSortedPlayers() {
-    let list = AppState.players;
+    // 1. 確保先排序所有玩家，賦予真實絕對排名
+    let sortedList = AppState.players
+      .slice()
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.maxPredictionSuccess - a.maxPredictionSuccess ||
+          b.topHand1 - a.topHand1 ||
+          b.topHand2 - a.topHand2 ||
+          b.topHand3 - a.topHand3 ||
+          b.allInCount - a.allInCount ||
+          a.checkInOrder - b.checkInOrder,
+      );
 
-    // 搜尋過濾
+    // 將真實排名寫入物件中
+    sortedList = sortedList.map((p, index) => ({ ...p, _trueRank: index + 1 }));
+
+    // 2. 搜尋過濾 (保留原本的真實排名)
     if (AppState.searchQuery) {
       const q = AppState.searchQuery.toLowerCase();
-      list = list.filter((p) => p.name.toLowerCase().includes(q));
+      sortedList = sortedList.filter((p) => p.name.toLowerCase().includes(q));
     }
 
-    // 優化: 利用 || 的短路特性與 slice() 淺拷貝進行多條件排序，寫法更簡潔
-    return list.slice().sort((a, b) => 
-      (b.score - a.score) ||
-      (b.maxPredictionSuccess - a.maxPredictionSuccess) ||
-      (b.topHand1 - a.topHand1) ||
-      (b.topHand2 - a.topHand2) ||
-      (b.topHand3 - a.topHand3) ||
-      (b.allInCount - a.allInCount) ||
-      (a.checkInOrder - b.checkInOrder)
-    );
+    return sortedList;
   },
 };
 
@@ -232,7 +245,7 @@ const RenderModule = {
     const optionsHtml = HAND_RANKS.map(
       (hand, index) => `<option value="${index}">${hand}</option>`,
     ).join("");
-    
+
     selects.forEach((id) => {
       document.getElementById(id).innerHTML = optionsHtml;
     });
@@ -250,10 +263,10 @@ const RenderModule = {
     container.innerHTML =
       players
         .map(
-          (p, index) => `
+          (p) => `
             <div class="rank-card">
                 <div class="col-rank">
-                    <span class="rank-number rank-${index + 1}">${index + 1}</span>
+                    <span class="rank-number rank-${p._trueRank}">${p._trueRank}</span>
                 </div>
                 <div class="col-name">${this.escapeHtml(p.name)}</div>
                 <div class="col-score text-highlight">${p.score}</div>
