@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>《ALL IN 梭哈》名次管理系統</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <header class="app-header">
+        <h1>《ALL IN 梭哈》名次管理系統</h1>
+        <div class="header-actions">
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="搜尋玩家..."
+            autocomplete="off"
+          />
+          <button id="exportBtn" class="btn btn-secondary">匯出 JSON</button>
+          <div class="import-wrapper">
+            <label for="importFile" class="btn btn-secondary">匯入 JSON</label>
+            <input type="file" id="importFile" accept=".json" />
+          </div>
+          <button id="resetBtn" class="btn btn-danger">重設資料</button>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <section class="left-panel">
+          <div class="panel-section init-section">
+            <h2>初始化名單</h2>
+            <p class="help-text">每行輸入一個名稱，將以此建立初始玩家名單。</p>
+            <textarea
+              id="initNames"
+              placeholder="大林&#10;陳阿班&#10;洗恩"
+            ></textarea>
+            <button id="initBtn" class="btn btn-primary">確認建立</button>
+          </div>
+
+          <div class="panel-section rules-section">
+            <h2>比賽規則</h2>
+            <ul class="rules-list">
+              <li>第一輪得分最高 20 名晉級第二輪</li>
+              <li>第二輪得分最高 10 名晉級第三輪</li>
+              <li>第三輪得分最高 5 名晉級決賽</li>
+            </ul>
+            <p>同分時排序規則：</p>
+            <ol class="rules-list">
+              <li>最大牌型成功預測次數</li>
+              <li>做出過的第一大牌型</li>
+              <li>做出過的第二大牌型</li>
+              <li>做出過的第三大牌型</li>
+              <li>喊 All in 次數</li>
+              <li>報到順序 (越小越前)</li>
+            </ol>
+          </div>
+
+          <div class="panel-section logs-section">
+            <h2>操作紀錄</h2>
+            <div id="logsContainer" class="logs-list"></div>
+          </div>
+        </section>
+
+        <section class="right-panel">
+          <div class="ranking-header">
+            <div class="col-rank">排名</div>
+            <div class="col-name">名稱</div>
+            <div class="col-score">分數</div>
+            <div class="col-stats">詳細數據</div>
+            <div class="col-actions">操作</div>
+          </div>
+          <div id="rankingList" class="ranking-list">
+            <!-- 玩家清單動態產生於此 -->
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- 編輯 Modal -->
+    <div id="editModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modalTitle">編輯玩家</h3>
+          <button class="close-btn" id="closeModalBtn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="editForm">
+            <input type="hidden" id="editPlayerId" />
+            <div class="form-group">
+              <label>分數</label>
+              <input type="number" id="editScore" required />
+            </div>
+            <div class="form-group">
+              <label>最大牌型成功預測次數</label>
+              <input type="number" id="editMaxPrediction" required />
+            </div>
+            <div class="form-group">
+              <label>第一大牌型</label>
+              <select id="editTopHand1"></select>
+            </div>
+            <div class="form-group">
+              <label>第二大牌型</label>
+              <select id="editTopHand2"></select>
+            </div>
+            <div class="form-group">
+              <label>第三大牌型</label>
+              <select id="editTopHand3"></select>
+            </div>
+            <div class="form-group">
+              <label>All in 次數</label>
+              <input type="number" id="editAllIn" required />
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelEditBtn">
+            取消
+          </button>
+          <button type="button" class="btn btn-primary" id="saveEditBtn">
+            儲存
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/script.js"></script>
+  </body>
+</html>
