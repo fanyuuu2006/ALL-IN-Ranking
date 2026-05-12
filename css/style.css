@@ -478,22 +478,6 @@ textarea {
   border-color: var(--color-primary);
 }
 
-select[multiple] {
-  background: var(--bg-main) !important;
-  color: var(--text-main) !important;
-}
-
-select[multiple] option {
-  padding: 6px 8px;
-  margin-bottom: 2px;
-  border-radius: 4px;
-}
-
-select[multiple] option:checked {
-  background: var(--border-color) !important;
-  color: var(--text-main) !important;
-}
-
 .modal-footer {
   padding: 16px 20px;
   border-top: 1px solid var(--border-color);

@@ -371,10 +371,12 @@ const RenderModule = {
           <input type="number" class="mp-score input" value="${matchPlayer ? matchPlayer.scoreDelta : 0}" required>
         </div>
         <div>
-          <label class="mp-label">本局牌型 (可多選)</label>
-          <select class="mp-hands input" multiple style="height: 80px; padding: 4px;">
-            ${handsOptions}
-          </select>
+          <label class="mp-label">本局牌型 (必選3個)</label>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <select class="mp-hand1 input">${handsOptions}</select>
+            <select class="mp-hand2 input">${handsOptions}</select>
+            <select class="mp-hand3 input">${handsOptions}</select>
+          </div>
         </div>
         <div>
           <label class="mp-label">All-In 次數</label>
@@ -391,12 +393,9 @@ const RenderModule = {
 
     // 預先選中牌型
     if (handsArr.length > 0) {
-      const select = row.querySelector('.mp-hands');
-      Array.from(select.options).forEach(opt => {
-        if (handsArr.includes(parseInt(opt.value))) {
-          opt.selected = true;
-        }
-      });
+      if(handsArr[0] !== undefined) row.querySelector('.mp-hand1').value = handsArr[0];
+      if(handsArr[1] !== undefined) row.querySelector('.mp-hand2').value = handsArr[1];
+      if(handsArr[2] !== undefined) row.querySelector('.mp-hand3').value = handsArr[2];
     }
 
     selector.value = "";
@@ -408,13 +407,14 @@ const RenderModule = {
       const playerRows = document.querySelectorAll(".match-player-row");
       
       const playersData = Array.from(playerRows).map(row => {
-        const handsSelect = row.querySelector('.mp-hands');
-        const selectedHands = Array.from(handsSelect.selectedOptions).map(opt => parseInt(opt.value));
+        const h1 = parseInt(row.querySelector('.mp-hand1').value) || 0;
+        const h2 = parseInt(row.querySelector('.mp-hand2').value) || 0;
+        const h3 = parseInt(row.querySelector('.mp-hand3').value) || 0;
         
         return {
           playerId: row.dataset.playerId,
           scoreDelta: parseInt(row.querySelector('.mp-score').value) || 0,
-          hands: selectedHands,
+          hands: [h1, h2, h3],
           allInCount: Math.max(0, parseInt(row.querySelector('.mp-allin').value) || 0),
           maxPredictionSuccess: Math.max(0, parseInt(row.querySelector('.mp-prediction').value) || 0)
         };
