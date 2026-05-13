@@ -158,7 +158,8 @@ const PlayersModule = {
   },
   /** 根據所有對局紀錄重新計算全體玩家的數據 */
   recalculateAllStats() {
-    // 初始化所有玩家的分數與數據
+    // 建立玩家映射以避免重複查找 (O(n) 建表, 後續查詢 O(1))
+    const playerMap = new Map();
     AppState.players.forEach((p) => {
       p.score = 0;
       p.maxPredictionSuccess = 0;
@@ -166,14 +167,18 @@ const PlayersModule = {
       p.topHand2 = 0;
       p.topHand3 = 0;
       p.allInCount = 0;
-      p._allHands = []; // 暫存該玩家所有的手牌
+      p._allHands = [];
+      playerMap.set(p.id, p);
     });
 
-    // 遍歷所有對局累加數據
-    AppState.matches.forEach((match) => {
-      (match.players || []).forEach((mp) => {
-        const player = AppState.players.find((p) => p.id === mp.playerId);
-        if (!player) return;
+    // 遍歷對局累加到對應玩家 (使用 map 查找)
+    for (let i = 0; i < AppState.matches.length; i++) {
+      const match = AppState.matches[i];
+      const mPlayers = match.players || [];
+      for (let j = 0; j < mPlayers.length; j++) {
+        const mp = mPlayers[j];
+        const player = playerMap.get(mp.playerId);
+        if (!player) continue;
 
         player.score += mp.scoreDelta || 0;
         player.maxPredictionSuccess = Math.max(
@@ -182,21 +187,21 @@ const PlayersModule = {
         );
         player.allInCount += mp.allInCount || 0;
         if (mp.hands && mp.hands.length) {
-          player._allHands.push(...mp.hands);
+          // 直接展開到暫存陣列
+          player._allHands.push.apply(player._allHands, mp.hands);
         }
-      });
-    });
+      }
+    }
 
-    // 計算前三大牌型
-    AppState.players.forEach((p) => {
+    // 計算前三大牌型（僅對有資料的玩家排序）
+    playerMap.forEach((p) => {
       if (p._allHands && p._allHands.length > 0) {
-        // 從大到小排序
         p._allHands.sort((a, b) => b - a);
         p.topHand1 = p._allHands[0] || 0;
         p.topHand2 = p._allHands[1] || 0;
         p.topHand3 = p._allHands[2] || 0;
       }
-      delete p._allHands; // 清理暫存屬性
+      delete p._allHands;
     });
   },
 };
@@ -212,8 +217,8 @@ const RankingModule = {
    * @returns {Player[]} 排序後的玩家資料
    */
   getSortedPlayers() {
-    // 1. 確保先排序所有玩家，賦予真實絕對排名
-    let sortedList = AppState.players
+    // 回傳依據規則排序的原始玩家陣列（不建立新物件）
+    return AppState.players
       .slice()
       .sort(
         (a, b) =>
@@ -225,17 +230,6 @@ const RankingModule = {
           b.allInCount - a.allInCount ||
           a.checkInOrder - b.checkInOrder,
       );
-
-    // 將真實排名寫入物件中
-    sortedList = sortedList.map((p, index) => ({ ...p, _trueRank: index + 1 }));
-
-    // 2. 搜尋過濾 (保留原本的真實排名)
-    if (AppState.searchQuery) {
-      const q = AppState.searchQuery.toLowerCase();
-      sortedList = sortedList.filter((p) => p.name.toLowerCase().includes(q));
-    }
-
-    return sortedList;
   },
 };
 
@@ -259,60 +253,75 @@ const RenderModule = {
   /** 計算並渲染排行榜區塊 */
   renderRanking() {
     const container = document.getElementById("rankingList");
-    const players = RankingModule.getSortedPlayers();
+    const sortedPlayers = RankingModule.getSortedPlayers();
+    const q = AppState.searchQuery ? AppState.searchQuery.toLowerCase() : "";
 
-    container.innerHTML =
-      players
-        .map(
-          (p) => `
-            <div class="rank-card">
-                <div class="col-rank">
-                    <span class="rank-number rank-${p._trueRank}">${p._trueRank}</span>
-                </div>
-                <div class="col-name">${this.escapeHtml(p.name)}</div>
-                <div class="col-score text-highlight">${p.score}</div>
-                <div class="col-stats">
-                    <div class="stat-badge tooltip" data-tip="預測成功次數">🎯 ${p.maxPredictionSuccess}</div>
-                    <div class="stat-badge tooltip" data-tip="第一牌型">🃏 ${HAND_RANKS[p.topHand1] || "-"}</div>
-                    <div class="stat-badge tooltip" data-tip="第二牌型">🃏 ${HAND_RANKS[p.topHand2] || "-"}</div>
-                    <div class="stat-badge tooltip" data-tip="第三牌型">🃏 ${HAND_RANKS[p.topHand3] || "-"}</div>
-                    <div class="stat-badge tooltip" data-tip="All-in 次數">🎰 ${p.allInCount}</div>
-                    <div class="stat-detail">報到順序 #${p.checkInOrder}</div>
-                </div>
-                <div class="col-actions">
-                    <!-- 列出對局，不再直接編輯分數 -->
-                </div>
-            </div>
-        `,
-        )
-        .join("") || '<div class="empty-state">尚無玩家資料</div>';
+    let html = "";
+    for (let i = 0; i < sortedPlayers.length; i++) {
+      const p = sortedPlayers[i];
+      if (q && !p.name.toLowerCase().includes(q)) continue;
+      const trueRank = i + 1;
+      html += `
+        <div class="rank-card">
+          <div class="col-rank">
+            <span class="rank-number rank-${trueRank}">${trueRank}</span>
+          </div>
+          <div class="col-name">${this.escapeHtml(p.name)}</div>
+          <div class="col-score text-highlight">${p.score}</div>
+          <div class="col-stats">
+            <div class="stat-badge tooltip" data-tip="預測成功次數">🎯 ${p.maxPredictionSuccess}</div>
+            <div class="stat-badge tooltip" data-tip="第一牌型">🃏 ${HAND_RANKS[p.topHand1] || "-"}</div>
+            <div class="stat-badge tooltip" data-tip="第二牌型">🃏 ${HAND_RANKS[p.topHand2] || "-"}</div>
+            <div class="stat-badge tooltip" data-tip="第三牌型">🃏 ${HAND_RANKS[p.topHand3] || "-"}</div>
+            <div class="stat-badge tooltip" data-tip="All-in 次數">🎰 ${p.allInCount}</div>
+            <div class="stat-detail">報到順序 #${p.checkInOrder}</div>
+          </div>
+          <div class="col-actions"></div>
+        </div>`;
+    }
+
+    container.innerHTML = html || '<div class="empty-state">尚無玩家資料</div>';
   },
   /** 渲染對局紀錄 */
   renderMatches() {
     const container = document.getElementById("matchesContainer");
-    container.innerHTML =
-      AppState.matches
-        .map((match, index) => {
-          const playersHtml = (match.players || []).map(mp => {
-            const player = AppState.players.find(p => p.id === mp.playerId);
-            const name = player ? this.escapeHtml(player.name) : "未知玩家";
-            const scoreSign = mp.scoreDelta >= 0 ? "+" : "";
-            return `<span>${name} (${scoreSign}${mp.scoreDelta})</span>`;
-          }).join(", ");
+    if (!AppState.matches || AppState.matches.length === 0) {
+      container.innerHTML = '<div class="empty-state">尚無對局紀錄</div>';
+      return;
+    }
 
-          return `
+    // 建立玩家名稱快取以避免在每一個 match 中重複查找
+    const playerNameMap = new Map();
+    for (let i = 0; i < AppState.players.length; i++) {
+      const p = AppState.players[i];
+      playerNameMap.set(p.id, this.escapeHtml(p.name));
+    }
+
+    let html = "";
+    for (let idx = 0; idx < AppState.matches.length; idx++) {
+      const match = AppState.matches[idx];
+      const players = match.players || [];
+      const playersHtml = [];
+      for (let k = 0; k < players.length; k++) {
+        const mp = players[k];
+        const name = playerNameMap.get(mp.playerId) || "未知玩家";
+        const scoreSign = mp.scoreDelta >= 0 ? "+" : "";
+        playersHtml.push(`<span>${name} (${scoreSign}${mp.scoreDelta})</span>`);
+      }
+
+      html += `
             <div class="log-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
                 <div style="display: flex; justify-content: space-between; width: 100%;">
-                    <div class="log-time">[${match.timestamp}] 局數 #${AppState.matches.length - index}</div>
+                    <div class="log-time">[${match.timestamp}] 局數 #${AppState.matches.length - idx}</div>
                     <button class="btn btn-sm btn-secondary" onclick="RenderModule.openMatchModal('${match.id}')">編輯</button>
                 </div>
                 <div class="log-msg" style="font-size: 0.9em; color: #666;">
-                    參與者: ${playersHtml || "無"}
+                    參與者: ${playersHtml.join(', ') || "無"}
                 </div>
-            </div>
-        `;
-        })
-        .join("") || '<div class="empty-state">尚無對局紀錄</div>';
+            </div>`;
+    }
+
+    container.innerHTML = html;
   },
   /** 開啟對局編輯視窗 */
   openMatchModal(matchId = null) {
@@ -458,9 +467,16 @@ const RenderModule = {
     });
 
     // 搜尋
-    document.getElementById("searchInput").addEventListener("input", (e) => {
+    // 搜尋（使用 debounce 減少重複渲染）
+    const searchEl = document.getElementById("searchInput");
+    let _searchTimer = null;
+    searchEl.addEventListener("input", (e) => {
       AppState.searchQuery = e.target.value;
-      this.renderRanking();
+      if (_searchTimer) clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(() => {
+        this.renderRanking();
+        _searchTimer = null;
+      }, 160);
     });
 
     // 新增對局按鈕

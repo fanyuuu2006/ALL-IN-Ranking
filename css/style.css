@@ -86,14 +86,14 @@ body {
 }
 
 .main-content {
-  display: flex;
+  display: grid;
+  grid-template-columns: 300px 1fr;
   gap: 24px;
   flex: 1;
   overflow: hidden;
 }
 
 .left-panel {
-  flex: 0 0 300px;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -101,7 +101,6 @@ body {
 }
 
 .right-panel {
-  flex: 1;
   display: flex;
   flex-direction: column;
   background: var(--bg-card);
@@ -490,11 +489,10 @@ textarea {
 @media (max-width: 900px) {
   .app-container {
     height: auto;
-    padding: 10px;
+    padding: 16px;
   }
   .app-header {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-wrap: wrap;
     gap: 16px;
   }
   .header-actions {
@@ -503,59 +501,54 @@ textarea {
   }
   .header-actions input[type="text"] {
     flex: 1;
-    min-width: 200px;
+    min-width: 150px;
   }
   .main-content {
-    flex-direction: column;
-  }
-  .left-panel {
-    flex: none;
-    overflow-y: visible;
-  }
-  .right-panel {
+    grid-template-columns: 1fr;
     overflow: visible;
   }
+  .left-panel, 
+  .right-panel, 
   .ranking-list {
     overflow: visible;
-    flex: none;
   }
 
   /* Mobile Card Layout */
   .ranking-header {
-    display: none; /* 手機版隱藏 Header 表頭 */
+    display: none;
   }
   .ranking-list {
     padding: 0;
   }
   .rank-card {
-    flex-direction: column;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: 1fr auto;
     gap: 12px;
-    position: relative;
     padding: 20px;
+    align-items: center;
   }
   .col-rank {
-    position: absolute;
-    top: 16px;
-    right: 20px;
-    flex: auto;
-  }
-  .col-actions {
-    width: 100%;
-    text-align: left;
+    grid-column: 2;
+    grid-row: 1;
+    text-align: right;
   }
   .col-name {
+    grid-column: 1;
+    grid-row: 1;
     font-size: 18px;
-    flex: auto;
   }
   .col-score {
-    flex: auto;
+    grid-column: 1 / -1;
     font-size: 20px;
   }
   .col-stats {
-    width: 100%;
-    margin-top: 8px;
+    grid-column: 1 / -1;
+    margin-top: 4px;
     padding-top: 12px;
     border-top: 1px dashed var(--border-color);
+  }
+  .col-actions {
+    grid-column: 1 / -1;
+    text-align: left;
   }
 }
